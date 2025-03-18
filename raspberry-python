@@ -1,0 +1,51 @@
+import lgpio as GPIO
+import time
+from flask import Flask, jsonify
+
+# إعداد الحساس
+TRIG = 23  # Pin TRIG
+ECHO = 24  # Pin ECHO
+
+# فتح شريحة GPIO وضبط المنافذ
+h = GPIO.gpiochip_open(0)
+GPIO.gpio_claim_output(h, TRIG)
+GPIO.gpio_claim_input(h, ECHO)
+
+# إنشاء تطبيق Flask
+app = Flask(__name__)
+
+def get_distance():
+    # ضبط TRIG على LOW
+    GPIO.gpio_write(h, TRIG, 0)
+    time.sleep(0.1)
+
+    # إرسال نبضة 10 ميكروثانية
+    GPIO.gpio_write(h, TRIG, 1)
+    time.sleep(0.00001)
+    GPIO.gpio_write(h, TRIG, 0)
+
+    # تسجيل وقت الإرسال والاستقبال
+    pulse_start, pulse_end = 0, 0
+
+    while GPIO.gpio_read(h, ECHO) == 0:
+        pulse_start = time.time()
+
+    while GPIO.gpio_read(h, ECHO) == 1:
+        pulse_end = time.time()
+
+    # حساب المسافة
+    pulse_duration = pulse_end - pulse_start
+    distance = pulse_duration * 17150
+    distance = round(distance, 2)
+
+    return distance
+
+@app.route('/distance', methods=['GET'])
+def send_distance():
+    distance = get_distance()
+    alert_msg = "تنبيه: أمامك شيء!" if distance < 100 else "لا يوجد خطر"
+
+    return jsonify({"alert": alert_msg, "distance": distance}), 200, {'Content-Type': 'application/json; charset=utf-8'}
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
