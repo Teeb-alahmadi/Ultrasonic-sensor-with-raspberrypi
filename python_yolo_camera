@@ -1,0 +1,49 @@
+import cv2
+import time
+import json
+from flask import Flask, jsonify
+from ultralytics import YOLO
+from picamera2 import Picamera2
+
+# تحميل نموذج YOLO
+model = YOLO("yolov8n.pt")
+
+# إعداد الكاميرا عبر Picamera2
+picam2 = Picamera2()
+config = picam2.create_preview_configuration(main={"format": 'RGB888', "size": (640, 480)})
+picam2.configure(config)
+picam2.start()
+
+# إنشاء تطبيق Flask
+app = Flask(__name__)
+
+def get_detections():
+    frame = picam2.capture_array()
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+
+    # تنفيذ YOLO على الإطار
+    results = model(frame_rgb)
+
+    # استخراج بيانات الكائنات المكتشفة
+    detections = []
+    for r in results:
+        for box in r.boxes:
+            detections.append({
+                "label": r.names[int(box.cls[0])],
+                "confidence": float(box.conf[0]),
+                "x": int(box.xyxy[0][0]),
+                "y": int(box.xyxy[0][1]),
+                "width": int(box.xyxy[0][2] - box.xyxy[0][0]),
+                "height": int(box.xyxy[0][3] - box.xyxy[0][1])
+            })
+
+    return detections
+
+@app.route('/detections', methods=['GET'])
+def send_detections():
+    detections = get_detections()
+    return jsonify({"detections": detections}), 200, {'Content-Type': 'application/json; charset=utf-8'}
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
+
