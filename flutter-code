@@ -1,0 +1,97 @@
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:audioplayers/audioplayers.dart';
+
+void main() {
+  runApp(MyApp());
+}
+
+class MyApp extends StatefulWidget {
+  @override
+  _MyAppState createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  String message = "الرجاء تشغيل التحديث";
+  double distance = 0.0;
+  bool isListening = false;
+  final player = AudioPlayer(); // مشغل الصوت
+
+  Future<void> fetchData() async {
+    while (isListening) {
+      try {
+        var response = await http.get(Uri.parse('http://192.168.100.50:5000/distance'));
+
+        if (response.statusCode == 200) {
+          var data = jsonDecode(response.body);
+          setState(() {
+            message = data["alert"];
+            distance = data["distance"];
+          });
+
+          // تشغيل الصوت إذا كان هناك خطر
+          if (distance < 100) {
+            await player.play(AssetSource('alarm-clock-beep-105903.mp3')); // تشغيل صوت التنبيه
+          }
+        } else {
+          setState(() {
+            message = "خطأ في الاتصال! كود الاستجابة: ${response.statusCode}";
+          });
+        }
+      } catch (e) {
+        setState(() {
+          message = "تعذر الاتصال بالخادم!";
+        });
+      }
+      await Future.delayed(Duration(seconds: 1)); // تحديث كل ثانية عند التشغيل
+    }
+  }
+
+  void toggleListening() {
+    setState(() {
+      isListening = !isListening;
+    });
+
+    if (isListening) {
+      fetchData(); // بدء الاستقبال عند التشغيل
+    } else {
+      setState(() {
+        message = "تم إيقاف التحديث";
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        appBar: AppBar(title: Text("تنبيه المسافة")),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                message,
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: message.contains("تنبيه") ? Colors.red : Colors.green),
+              ),
+              SizedBox(height: 20),
+              Text(
+                "المسافة: ${distance.toStringAsFixed(2)} سم",
+                style: TextStyle(fontSize: 20),
+              ),
+              SizedBox(height: 40),
+              SwitchListTile(
+                title: Text("تحديث البيانات"),
+                value: isListening,
+                onChanged: (bool value) {
+                  toggleListening();
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
